@@ -113,16 +113,3 @@ src/xpath_gen/
 └── web/          # FastAPI app, templates, SSE job tracking
 ```
 
-## STAR Method — Interview Narrative
-
-**Situation:** In test automation projects, writing reliable XPath locators for complex web applications was a major bottleneck. QA engineers spent 2–3 hours per page manually inspecting the DOM, naming elements, writing locators, and validating them across browsers — a process that was slow, inconsistent, and didn't account for hidden UI revealed only by user interactions like hover menus or lazy-loaded content.
-
-**Task:** I needed to build an end-to-end tool that could take any URL, automatically discover all testable elements (including conditionally visible ones), generate human-readable names and stable XPath locators, validate them across multiple browsers, and deliver a ready-to-use spreadsheet — reducing the entire workflow to minutes instead of hours.
-
-**Action:** I engineered a 5-stage pipeline using Playwright for headless DOM extraction and cross-browser validation, combined with OpenAI for intelligent section classification and XPath generation. A key innovation was the hidden-element discovery module that programmatically triggers scroll, hover, accordion expand, and safe form-submit events to surface 30% more elements than static analysis alone. I built a FastAPI web UI with server-sent events for real-time progress tracking and Excel export with per-browser pass/fail coloring. The system processes 100+ elements per page in batched LLM calls with automatic XPath repair on validation failures.
-
-**Result:** The tool reduced manual locator authoring from 2–3 hours per page to under 5 minutes, achieved a 90%+ first-pass cross-browser validation rate, and captured significantly more testable elements through interaction-based discovery. The Excel output gave QA teams a immediately actionable locator library organized by page section, with confidence scores and validation status — turning a tedious manual process into a one-click automated workflow.
-
-## License
-
-MIT
