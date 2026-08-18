@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>XPath Auto Generator</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>XPath Auto Generator</h1>
+      <p class="subtitle">LLM-powered locator extraction with Playwright cross-browser validation</p>
+    </header>
+
+    {% if not has_api_key %}
+    <div class="warning">
+      <strong>Note:</strong> No OPENAI_API_KEY detected. The tool will use fallback heuristics for XPath generation.
+      Set your key in <code>.env</code> for best results.
+    </div>
+    {% endif %}
+
+    <form id="generate-form" class="card">
+      <label for="url">Page URL</label>
+      <input type="url" id="url" name="url" placeholder="https://example.com" required>
+
+      <div class="options">
+        <label class="checkbox">
+          <input type="checkbox" id="hidden-discovery" checked>
+          Enable hidden-element discovery (hover, scroll, expand)
+        </label>
+
+        <label for="max-elements">Max elements</label>
+        <input type="number" id="max-elements" value="200" min="10" max="500">
+
+        <fieldset>
+          <legend>Browsers for validation</legend>
+          <label><input type="checkbox" name="browser" value="chromium" checked> Chromium</label>
+          <label><input type="checkbox" name="browser" value="firefox" checked> Firefox</label>
+          <label><input type="checkbox" name="browser" value="webkit" checked> WebKit</label>
+        </fieldset>
+      </div>
+
+      <button type="submit" id="submit-btn">Generate Locators</button>
+    </form>
+
+    <div id="progress-section" class="card hidden">
+      <h2>Pipeline Progress</h2>
+      <div class="progress-bar">
+        <div id="progress-fill" class="progress-fill"></div>
+      </div>
+      <p id="progress-pct" class="progress-pct">0%</p>
+      <ul id="log" class="log"></ul>
+    </div>
+
+    <div id="results-section" class="card hidden">
+      <h2>Results</h2>
+      <div id="stats" class="stats"></div>
+      <a id="download-btn" class="download-btn" href="#">Download Excel Report</a>
+    </div>
+  </div>
+
+  <script>
+    const form = document.getElementById('generate-form');
+    const progressSection = document.getElementById('progress-section');
+    const resultsSection = document.getElementById('results-section');
+    const log = document.getElementById('log');
+    const progressFill = document.getElementById('progress-fill');
+    const progressPct = document.getElementById('progress-pct');
+    const submitBtn = document.getElementById('submit-btn');
+    const stats = document.getElementById('stats');
+    const downloadBtn = document.getElementById('download-btn');
+
+    function addLog(message) {
+      const li = document.createElement('li');
+      li.textContent = message;
+      log.appendChild(li);
+      log.scrollTop = log.scrollHeight;
+    }
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      log.innerHTML = '';
+      progressSection.classList.remove('hidden');
+      resultsSection.classList.add('hidden');
+      submitBtn.disabled = true;
+      submitBtn.textContent = 'Running pipeline...';
+
+      const browsers = Array.from(document.querySelectorAll('input[name="browser"]:checked'))
+        .map(cb => cb.value);
+
+      const body = {
+        url: document.getElementById('url').value,
+        enable_hidden_discovery: document.getElementById('hidden-discovery').checked,
+        max_elements: parseInt(document.getElementById('max-elements').value, 10),
+        browsers,
+      };
+
+      try {
+        const res = await fetch('/api/jobs', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        });
+        const { job_id } = await res.json();
+
+        let finished = false;
+
+        async function finishJob() {
+          if (finished) return;
+          finished = true;
+          source.close();
+          const jobRes = await fetch(`/api/jobs/${job_id}`);
+          const job = await jobRes.json();
+          showResults(job_id, job);
+        }
+
+        const source = new EventSource(`/api/jobs/${job_id}/events`);
+        source.onmessage = (event) => {
+          const data = JSON.parse(event.data);
+          addLog(`[${data.stage}] ${data.message}`);
+          progressFill.style.width = `${data.pct}%`;
+          progressPct.textContent = `${data.pct}%`;
+
+          if (data.stage === 'completed' || data.stage === 'failed') {
+            finishJob();
+          }
+        };
+
+        source.onerror = async () => {
+          await finishJob();
+        };
+      } catch (err) {
+        addLog(`Error: ${err.message}`);
+      } finally {
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Generate Locators';
+      }
+    });
+
+    function showResults(jobId, summary) {
+      resultsSection.classList.remove('hidden');
+      const s = summary || {};
+      if (s.error) {
+        addLog(`Error: ${s.error}`);
+      }
+      stats.innerHTML = `
+        <div class="stat"><span>Total Elements</span><strong>${s.total_elements ?? '—'}</strong></div>
+        <div class="stat"><span>Pass Rate</span><strong>${s.pass_rate_pct ?? '—'}%</strong></div>
+        <div class="stat"><span>Discovery Boost</span><strong>+${s.discovery_boost_pct ?? '—'}%</strong></div>
+      `;
+      downloadBtn.href = `/api/jobs/${jobId}/download`;
+      downloadBtn.style.display = s.status === 'completed' ? 'inline-block' : 'none';
+    }
+  </script>
+</body>
+</html>

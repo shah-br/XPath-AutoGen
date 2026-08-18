@@ -1,0 +1,2 @@
+[console_scripts]
+xpath-gen = xpath_gen.main:cli
